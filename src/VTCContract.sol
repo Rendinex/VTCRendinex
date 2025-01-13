@@ -44,11 +44,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         require(fundingGoal > 0, "Funding goal must be greater than zero");
 
         uint256 licenseId = nextLicenseId++;
-        licenses[licenseId] = License({
-            fundingGoal: fundingGoal,
-            fundsRaised: 0,
-            fundingCompleted: false
-        });
+        licenses[licenseId] = License({fundingGoal: fundingGoal, fundsRaised: 0, fundingCompleted: false});
 
         _mint(address(this), TOKEN_PER_LICENSE);
         totalLicensesMinted += 1;
