@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -103,17 +103,5 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     function updateFees(uint256 newFeePercent) external onlyOwner {
         require(newFeePercent <= 100, "Fee cannot exceed 1%");
         feePercent = newFeePercent;
-    }
-
-    function _transfer(address sender, address recipient, uint256 amount) internal override {
-        uint256 fee = (amount * feePercent) / 10000;
-        uint256 amountAfterFee = amount - fee;
-
-        uint256 treasuryShare = fee / 2;
-        uint256 rendinexShare = fee - treasuryShare;
-
-        super._transfer(sender, treasury, treasuryShare);
-        super._transfer(sender, rendinex, rendinexShare);
-        super._transfer(sender, recipient, amountAfterFee);
     }
 }
