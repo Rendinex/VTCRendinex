@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract RVTC is ERC20, Ownable, ReentrancyGuard {
-    uint256 public constant INITIAL_SUPPLY = 100000 * 10 ** 18; // 100,000 tokens
-    uint256 public constant TOKEN_PER_LICENSE = 1000 * 10 ** 18; // 1,000 tokens per license
+    uint256 public constant INITIAL_SUPPLY = 1000 * 10 ** 18;
+    uint256 public constant TOKEN_PER_LICENSE = 1000 * 10 ** 18;
     uint256 public totalLicensesMinted;
 
     uint256 public feePercent = 10; // 0.1% fee (0.1 * 1000 = 10 basis points)
@@ -33,7 +33,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     event USDTDeposited(uint256 amount);
     event FeesDistributed(uint256 treasuryFee, uint256 rendinexFee);
 
-    constructor(address _usdtToken, address _treasury, address _rendinex) ERC20("RVTC", "RVTC") {
+    constructor(address _usdtToken, address _treasury, address _rendinex) Ownable(msg.sender) ERC20("RVTC", "RVTC") {
         _mint(msg.sender, INITIAL_SUPPLY);
         usdtToken = IERC20(_usdtToken);
         treasury = _treasury;
@@ -84,14 +84,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         usdtToken.transfer(treasury, treasuryFee);
         usdtToken.transfer(rendinex, rendinexFee);
 
-        uint256 totalSupply = totalSupply();
-        for (uint256 i = 0; i < totalSupply; i++) {
-            address holder = address(uint160(i)); // Simplification for demonstration purposes
-            uint256 balance = balanceOf(holder);
-            if (balance > 0) {
-                usdtClaimable[holder] += (distributedAmount * balance) / totalSupply;
-            }
-        }
+        // Implement logic for distribution
 
         emit USDTDeposited(totalProfits);
         emit FeesDistributed(treasuryFee, rendinexFee);
