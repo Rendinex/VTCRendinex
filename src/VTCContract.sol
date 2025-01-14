@@ -1,103 +1,181 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract RVTC is ERC20, Ownable, ReentrancyGuard {
-    uint256 public constant INITIAL_SUPPLY = 1000 * 10 ** 18;
-    uint256 public constant TOKEN_PER_LICENSE = 1000 * 10 ** 18;
-    uint256 public totalLicensesMinted;
+  uint256 public constant INITIAL_SUPPLY = 1000 * 10 ** 18;
+  uint256 public constant TOKEN_PER_LICENSE = 1000 * 10 ** 18;
+  uint256 public totalLicensesMinted;
+  uint256 public constant MIN_DEPOSIT = 10; // Minimum 10 tokens
+  uint256 public totalLockedTokens;
+  uint256 public cumulativeProfitPerToken; // Global cumulative profit per token
+  uint256 public feePercent = 10;
+  uint256 public nextLicenseId;
+  address public treasury;
+  address public rendinex;
+  address[] public usersWhoLockedTokens;
 
-    uint256 public feePercent = 10; // 0.1% fee (0.1 * 1000 = 10 basis points)
-    address public treasury;
-    address public rendinex;
+  mapping(uint256 => License) public licenses;
+  mapping(address => uint256) public usdtWithdrawable;
+  mapping(address => uint256) public lastCumulativeProfitPerToken; // Tracks each holder's last withdraw
+  mapping(address => uint256) public withdrawable; // Withdrawable profits for each user
+  mapping(address => uint256) public lockedTokens;
+  mapping(address => bool) public hasLockedTokens;
+  mapping(address => uint256) private _balances;
 
-    struct License {
-        uint256 fundingGoal;
-        uint256 fundsRaised;
-        bool fundingCompleted;
+  struct License {
+    uint256 fundingGoal;
+    uint256 fundsRaised;
+    bool fundingCompleted;
+  }
+
+  IERC20 public usdtToken;
+
+  event TokensDeposited(address indexed user, uint256 amount);
+  event SaleFinalized();
+  event LicenseMinted(uint256 indexed licenseId, uint256 fundingGoal);
+  event LicensePurchased(
+    address indexed buyer,
+    uint256 indexed licenseId,
+    uint256 amount
+  );
+  event TokensWithdrawed(address indexed withdrawer, uint256 amount);
+  event USDTDeposited(uint256 amount);
+  event FeesDistributed(uint256 treasuryFee, uint256 rendinexFee);
+
+  constructor(
+    uint256 initialSupply,
+    address _usdtToken,
+    address _treasury,
+    address _rendinex
+  ) Ownable(msg.sender) ERC20("RVTC", "RVTC") {
+    _mint(msg.sender, INITIAL_SUPPLY);
+    usdtToken = IERC20(_usdtToken);
+    treasury = _treasury;
+    rendinex = _rendinex;
+  }
+
+  function mintLicense(uint256 fundingGoal) external onlyOwner {
+    require(fundingGoal > 0, "Funding goal must be greater than zero");
+
+    uint256 licenseId = nextLicenseId++;
+    licenses[licenseId] = License({
+      fundingGoal: fundingGoal,
+      fundsRaised: 0,
+      fundingCompleted: false
+    });
+
+    _mint(address(this), TOKEN_PER_LICENSE);
+    totalLicensesMinted += 1;
+
+    emit LicenseMinted(licenseId, fundingGoal);
+  }
+
+  /**function purchaseLicense(
+    uint256 licenseId,
+    uint256 amount
+  ) external nonReentrant {
+    License storage license = licenses[licenseId];
+    require(
+      !license.fundingCompleted,
+      "Funding for this license is already completed"
+    );
+    require(
+      amount > 0 && amount + license.fundsRaised <= license.fundingGoal,
+      "Invalid funding amount"
+    );
+
+    usdtToken.transferFrom(msg.sender, address(this), amount);
+    license.fundsRaised += amount;
+
+    if (license.fundsRaised >= license.fundingGoal) {
+      license.fundingCompleted = true;
     }
 
-    mapping(uint256 => License) public licenses;
-    uint256 public nextLicenseId;
+    uint256 tokensToTransfer = (amount * TOKEN_PER_LICENSE) /
+      license.fundingGoal;
+    _transfer(address(this), msg.sender, tokensToTransfer);
 
-    mapping(address => uint256) public usdtClaimable;
+    emit LicensePurchased(msg.sender, licenseId, amount);
+  }*/
 
-    IERC20 public usdtToken;
+  function distributeProfits(uint256 amount) external onlyOwner {
+    require(totalSupply() > 0, "No tokens in circulation");
+    require(
+      usdtToken.transferFrom(msg.sender, address(this), amount),
+      "USDT transfer failed"
+    );
 
-    event LicenseMinted(uint256 indexed licenseId, uint256 fundingGoal);
-    event LicensePurchased(address indexed buyer, uint256 indexed licenseId, uint256 amount);
-    event TokensClaimed(address indexed claimer, uint256 amount);
-    event USDTDeposited(uint256 amount);
-    event FeesDistributed(uint256 treasuryFee, uint256 rendinexFee);
+    uint256 profitPerToken = (amount * 1e18) / totalSupply(); // Scale by 1e18 to handle decimals
+    cumulativeProfitPerToken += profitPerToken;
+  }
 
-    constructor(address _usdtToken, address _treasury, address _rendinex) Ownable(msg.sender) ERC20("RVTC", "RVTC") {
-        _mint(msg.sender, INITIAL_SUPPLY);
-        usdtToken = IERC20(_usdtToken);
-        treasury = _treasury;
-        rendinex = _rendinex;
+  function withdrawProfits() external {
+    _updateWithdrawable(msg.sender); // Update the withdrawable amount
+    uint256 amount = withdrawable[msg.sender];
+    require(amount > 0, "No withdrawable profits");
+    withdrawable[msg.sender] = 0;
+
+    require(usdtToken.transfer(msg.sender, amount), "USDT transfer failed");
+  }
+
+  // Override transfer to update withdrawable amounts
+  function _transfer(
+    address sender,
+    address recipient,
+    uint256 amount
+  ) internal override {
+    _updateWithdrawable(sender); // Update sender's withdrawable profits
+    _updateWithdrawable(recipient); // Update recipient's withdrawable profits
+    super._transfer(sender, recipient, amount); // Perform the transfer
+  }
+
+  // Update withdrawable profits for an account
+  function _updateWithdrawable(address account) internal {
+    uint256 currentBalance = balanceOf(account);
+    if (currentBalance > 0) {
+      uint256 profitSinceLastUpdate = cumulativeProfitPerToken -
+        lastCumulativeProfitPerToken[account];
+      withdrawable[account] += (currentBalance * profitSinceLastUpdate) / 1e18;
+    }
+    lastCumulativeProfitPerToken[account] = cumulativeProfitPerToken;
+  }
+
+  function depositTokens(uint256 amount) external {
+    require(amount >= MIN_DEPOSIT, "Amount below minimum");
+    require(
+      totalLockedTokens + amount <= TOKEN_PER_LICENSE,
+      "Exceeds target lock amount"
+    );
+    require(_balances[msg.sender] >= amount, "Insufficient balance");
+
+    if (!hasLockedTokens[msg.sender]) {
+      usersWhoLockedTokens.push(msg.sender);
+      hasLockedTokens[msg.sender] = true;
     }
 
-    function mintLicense(uint256 fundingGoal) external onlyOwner {
-        require(fundingGoal > 0, "Funding goal must be greater than zero");
+    lockedTokens[msg.sender] += amount;
+    totalLockedTokens += amount;
 
-        uint256 licenseId = nextLicenseId++;
-        licenses[licenseId] = License({fundingGoal: fundingGoal, fundsRaised: 0, fundingCompleted: false});
+    emit TokensDeposited(msg.sender, amount);
+  }
 
-        _mint(address(this), TOKEN_PER_LICENSE);
-        totalLicensesMinted += 1;
+  function finalizeSale() external onlyOwner {
+    require(totalLockedTokens == TOKEN_PER_LICENSE, "Target not reached");
 
-        emit LicenseMinted(licenseId, fundingGoal);
+    for (uint256 i = 0; i < usersWhoLockedTokens.length; i++) {
+      address user = usersWhoLockedTokens[i];
+      uint256 locked = lockedTokens[user];
+      if (locked > 0) {
+        _burn(user, locked);
+        lockedTokens[user] = 0;
+      }
     }
 
-    function purchaseLicense(uint256 licenseId, uint256 amount) external nonReentrant {
-        License storage license = licenses[licenseId];
-        require(!license.fundingCompleted, "Funding for this license is already completed");
-        require(amount > 0 && amount + license.fundsRaised <= license.fundingGoal, "Invalid funding amount");
+    totalLockedTokens = 0;
 
-        usdtToken.transferFrom(msg.sender, address(this), amount);
-        license.fundsRaised += amount;
-
-        if (license.fundsRaised >= license.fundingGoal) {
-            license.fundingCompleted = true;
-        }
-
-        uint256 tokensToTransfer = (amount * TOKEN_PER_LICENSE) / license.fundingGoal;
-        _transfer(address(this), msg.sender, tokensToTransfer);
-
-        emit LicensePurchased(msg.sender, licenseId, amount);
-    }
-
-    function distributeUSDT(uint256 totalProfits) external onlyOwner {
-        require(usdtToken.transferFrom(msg.sender, address(this), totalProfits), "USDT transfer failed");
-
-        uint256 treasuryFee = (totalProfits * feePercent) / 10000 / 2;
-        uint256 rendinexFee = treasuryFee;
-        uint256 distributedAmount = totalProfits - (treasuryFee + rendinexFee);
-
-        usdtToken.transfer(treasury, treasuryFee);
-        usdtToken.transfer(rendinex, rendinexFee);
-
-        // Implement logic for distribution
-
-        emit USDTDeposited(totalProfits);
-        emit FeesDistributed(treasuryFee, rendinexFee);
-    }
-
-    function claimUSDT() external nonReentrant {
-        uint256 claimable = usdtClaimable[msg.sender];
-        require(claimable > 0, "No USDT to claim");
-
-        usdtClaimable[msg.sender] = 0;
-        usdtToken.transfer(msg.sender, claimable);
-
-        emit TokensClaimed(msg.sender, claimable);
-    }
-
-    function updateFees(uint256 newFeePercent) external onlyOwner {
-        require(newFeePercent <= 100, "Fee cannot exceed 1%");
-        feePercent = newFeePercent;
-    }
+    emit SaleFinalized();
+  }
 }
