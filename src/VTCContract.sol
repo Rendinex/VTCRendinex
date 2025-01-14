@@ -46,7 +46,6 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
   event FeesDistributed(uint256 treasuryFee, uint256 rendinexFee);
 
   constructor(
-    uint256 initialSupply,
     address _usdtToken,
     address _treasury,
     address _rendinex
@@ -73,34 +72,6 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     emit LicenseMinted(licenseId, fundingGoal);
   }
 
-  /**function purchaseLicense(
-    uint256 licenseId,
-    uint256 amount
-  ) external nonReentrant {
-    License storage license = licenses[licenseId];
-    require(
-      !license.fundingCompleted,
-      "Funding for this license is already completed"
-    );
-    require(
-      amount > 0 && amount + license.fundsRaised <= license.fundingGoal,
-      "Invalid funding amount"
-    );
-
-    usdtToken.transferFrom(msg.sender, address(this), amount);
-    license.fundsRaised += amount;
-
-    if (license.fundsRaised >= license.fundingGoal) {
-      license.fundingCompleted = true;
-    }
-
-    uint256 tokensToTransfer = (amount * TOKEN_PER_LICENSE) /
-      license.fundingGoal;
-    _transfer(address(this), msg.sender, tokensToTransfer);
-
-    emit LicensePurchased(msg.sender, licenseId, amount);
-  }*/
-
   function distributeProfits(uint256 amount) external onlyOwner {
     require(totalSupply() > 0, "No tokens in circulation");
     require(
@@ -121,15 +92,26 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     require(usdtToken.transfer(msg.sender, amount), "USDT transfer failed");
   }
 
-  // Override transfer to update withdrawable amounts
-  function _transfer(
+  function transfer(
+    address recipient,
+    uint256 amount
+  ) public override returns (bool) {
+    _updateWithdrawable(msg.sender); // Update the sender's claimable profits
+    _updateWithdrawable(recipient); // Update the recipient's claimable profits
+
+    return super.transfer(recipient, amount); // Call the original ERC20 transfer
+  }
+
+  // Override transferFrom function to include custom logic (such as profit claim)
+  function transferFrom(
     address sender,
     address recipient,
     uint256 amount
-  ) internal override {
-    _updateWithdrawable(sender); // Update sender's withdrawable profits
-    _updateWithdrawable(recipient); // Update recipient's withdrawable profits
-    super._transfer(sender, recipient, amount); // Perform the transfer
+  ) public override returns (bool) {
+    _updateWithdrawable(sender); // Update the sender's claimable profits
+    _updateWithdrawable(recipient); // Update the recipient's claimable profits
+
+    return super.transferFrom(sender, recipient, amount); // Call the original ERC20 transferFrom
   }
 
   // Update withdrawable profits for an account
