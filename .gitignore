@@ -14,3 +14,4 @@ docs/
 .env
 
 NOUP*
+node_modules/

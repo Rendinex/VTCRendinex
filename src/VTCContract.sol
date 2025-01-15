@@ -1,11 +1,10 @@
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract RVTC is ERC20, Ownable, ReentrancyGuard {
-    uint256 public constant INITIAL_SUPPLY = 1000 * 10 ** 18;
     uint256 public constant TOKEN_PER_LICENSE = 1000 * 10 ** 18;
     uint256 public totalLicensesMinted;
     uint256 public constant MIN_DEPOSIT = 10; // Minimum 10 tokens
@@ -29,9 +28,16 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         uint256 fundingGoal;
         uint256 fundsRaised;
         bool fundingCompleted;
+        mapping(address => uint256) contributions;
     }
 
     IERC20 public usdtToken;
+
+    event LicenseCreated(uint256 indexed licenseId, uint256 fundingGoal);
+    event LicenseFunded(uint256 indexed licenseId, address indexed contributor, uint256 amount);
+    event LicenseFinalized(uint256 indexed licenseId, uint256 totalFundsRaised);
+    event ContributionWithdrawn(uint256 indexed licenseId, address indexed contributor, uint256 amount);
+    event FundingGoalReduced(uint256 indexed licenseId, uint256 newFundingGoal);
 
     event TokensDeposited(address indexed user, uint256 amount);
     event SaleFinalized();
@@ -42,22 +48,86 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     event FeesDistributed(uint256 treasuryFee, uint256 rendinexFee);
 
     constructor(address _usdtToken, address _treasury, address _rendinex) Ownable(msg.sender) ERC20("RVTC", "RVTC") {
-        _mint(msg.sender, INITIAL_SUPPLY);
         usdtToken = IERC20(_usdtToken);
         treasury = _treasury;
         rendinex = _rendinex;
+    }
+
+    function createLicense(uint256 fundingGoal) external onlyOwner {
+        require(fundingGoal > 0, "Funding goal must be greater than zero");
+
+        uint256 licenseId = nextLicenseId++;
+        licenses[licenseId].fundingGoal = fundingGoal;
+        licenses[licenseId].fundingCompleted = false;
+
+        emit LicenseCreated(licenseId, fundingGoal);
+    }
+
+    function contributeToLicense(uint256 licenseId, uint256 amount) external nonReentrant {
+        License storage license = licenses[licenseId];
+        require(!license.fundingCompleted, "Funding already completed");
+        require(amount > 0, "Contribution must be greater than zero");
+        require(usdtToken.transferFrom(msg.sender, address(this), amount), "USDT transfer failed");
+
+        license.fundsRaised += amount;
+        license.contributions[msg.sender] += amount;
+
+        emit LicenseFunded(licenseId, msg.sender, amount);
+    }
+
+    function reduceFundingGoal(uint256 licenseId, uint256 newFundingGoal) external onlyOwner {
+    License storage license = licenses[licenseId];
+    require(!license.fundingCompleted, "Funding already completed");
+    require(newFundingGoal >= license.fundsRaised, "New funding goal must be at least the amount already raised");
+    require(newFundingGoal < license.fundingGoal, "New funding goal must be less than the current goal");
+
+    license.fundingGoal = newFundingGoal;
+
+    emit FundingGoalReduced(licenseId, newFundingGoal);
+}
+
+    function withdrawContribution(uint256 licenseId) external nonReentrant {
+        License storage license = licenses[licenseId];
+        require(!license.fundingCompleted, "Funding already completed");
+        uint256 contribution = license.contributions[msg.sender];
+        require(contribution > 0, "No contributions to withdraw");
+
+        license.contributions[msg.sender] = 0;
+        license.fundsRaised -= contribution;
+
+        require(usdtToken.transfer(msg.sender, contribution), "USDT transfer failed");
+
+        emit ContributionWithdrawn(licenseId, msg.sender, contribution);
     }
 
     function mintLicense(uint256 fundingGoal) external onlyOwner {
         require(fundingGoal > 0, "Funding goal must be greater than zero");
 
         uint256 licenseId = nextLicenseId++;
-        licenses[licenseId] = License({fundingGoal: fundingGoal, fundsRaised: 0, fundingCompleted: false});
-
-        _mint(address(this), TOKEN_PER_LICENSE);
-        totalLicensesMinted += 1;
+        // Initialize the struct fields explicitly, excluding the mapping
+        License storage license = licenses[licenseId];
+        license.fundingGoal = fundingGoal;
+        license.fundingCompleted = false;
 
         emit LicenseMinted(licenseId, fundingGoal);
+    }
+
+    function finalizeLicense(uint256 licenseId) external onlyOwner {
+        License storage license = licenses[licenseId];
+        require(!license.fundingCompleted, "License already finalized");
+        require(license.fundsRaised >= license.fundingGoal, "Funding goal not reached");
+
+        license.fundingCompleted = true;
+        totalLicensesMinted++;
+        _mint(address(this), TOKEN_PER_LICENSE);
+
+        require(usdtToken.transfer(owner(), license.fundsRaised), "USDT transfer to owner failed");
+
+        emit LicenseFinalized(licenseId, license.fundsRaised);
+    }
+
+    function getContribution(uint256 licenseId, address contributor) external view returns (uint256) {
+        return licenses[licenseId].contributions[contributor];
     }
 
     function distributeProfits(uint256 amount) external onlyOwner {
@@ -133,5 +203,22 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         totalLockedTokens = 0;
 
         emit SaleFinalized();
+    }
+
+    function getLicenses() external view returns (uint256[] memory, uint256[] memory, uint256[] memory, bool[] memory) {
+        uint256 totalLicenses = nextLicenseId;
+        uint256[] memory ids = new uint256[](totalLicenses);
+        uint256[] memory fundingGoals = new uint256[](totalLicenses);
+        uint256[] memory fundsRaised = new uint256[](totalLicenses);
+        bool[] memory fundingCompleted = new bool[](totalLicenses);
+
+        for (uint256 i = 0; i < totalLicenses; i++) {
+            ids[i] = i;
+            fundingGoals[i] = licenses[i].fundingGoal;
+            fundsRaised[i] = licenses[i].fundsRaised;
+            fundingCompleted[i] = licenses[i].fundingCompleted;
+        }
+
+        return (ids, fundingGoals, fundsRaised, fundingCompleted);
     }
 }
