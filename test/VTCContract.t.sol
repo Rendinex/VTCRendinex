@@ -18,10 +18,16 @@ contract RVTCTest is Test {
     function setUp() public {
         usdt = new Token("USDT", "USDT", 18);
         // The contract owner is the deployer of the contract which is the test contract, not the caller
-        // vm.prank(contract_owner);
+        vm.prank(contract_owner);
         rvtc = new RVTC(address(usdt), treasury, rendinex);
+
         // Mint USDT to contributors
         usdt.mint(first_contributor, 10_000 * 10 ** 6);
+
+        // Create license
+        uint256 licenseGoal = 10_000 * 10 ** 6;
+        vm.prank(contract_owner);
+        rvtc.createLicense(licenseGoal);
 
         // Approve the RVTC contract to spend the tokens on behalf of the user
         vm.prank(user);
@@ -29,11 +35,9 @@ contract RVTCTest is Test {
     }
 
     // Test creation of license
-    function testCreateLicense() public {
-        // Create license
-        uint256 licenseGoal = 10_000 * 10 ** 6; // 10,000 USDT
-        vm.prank(address(this));
-        rvtc.createLicense(licenseGoal);
+    function testCreateLicense() public view {
+        uint256 licenseGoal = 10_000 * 10 ** 6;
+
         // Get license data
         (
             uint256[] memory ids,
@@ -41,11 +45,22 @@ contract RVTCTest is Test {
             uint256[] memory updatedFundsRaised,
             bool[] memory fundingCompleted
         ) = rvtc.getLicenses();
+
         assertEq(ids.length, 1);
         assertEq(ids[0], 0);
         assertEq(fundingGoals[0], licenseGoal);
         assertEq(updatedFundsRaised[0], 0);
         assertEq(fundingCompleted[0], false);
+    }
+
+    // Test reduction of funding
+    function testReduceFundingGoal() public {
+        uint256 reducedFunding = 3_000 * 10 ** 6;
+        vm.prank(contract_owner);
+        rvtc.reduceFundingGoal(0, reducedFunding);
+        // Get license data
+        (, uint256[] memory fundingGoals,,) = rvtc.getLicenses();
+        assertEq(fundingGoals[0], reducedFunding);
     }
 
     /*
@@ -61,18 +76,6 @@ contract RVTCTest is Test {
         (uint256[] memory ids, , uint256[] memory fundsRaised, ) = rvtc
             .getLicenses();
         assertEq(fundsRaised[0], 500);
-    }
-
-    function testReduceFundingGoal() public {
-        vm.prank(owner);
-        rvtc.createLicense(1000);
-
-        vm.prank(owner);
-        rvtc.reduceFundingGoal(0, 500);
-
-        (uint256[] memory ids, uint256[] memory fundingGoals, , ) = rvtc
-            .getLicenses();
-        assertEq(fundingGoals[0], 500);
     }
 
     function testWithdrawContribution() public {
