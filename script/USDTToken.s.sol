@@ -33,8 +33,8 @@ contract TokenScript is Script {
 
         vm.startBroadcast(privateKey);
 
-        Token token = new Token("Test USDT", "TEST_USDT", 18);
-        token.mint(account, 1000000000000000000000000);
+        Token token = new Token("Test USDT", "TEST_USDT", 6);
+        token.mint(account, 100_000_000_000);
 
         vm.stopBroadcast();
     }
