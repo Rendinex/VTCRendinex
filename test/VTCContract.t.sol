@@ -32,7 +32,7 @@ contract RVTCTest is Test {
         rvtc.createLicense(licenseGoal);
 
         // Get license data
-        (, uint256[] memory fundingGoals, , ) = rvtc.getLicenses();
+        (, uint256[] memory fundingGoals,,) = rvtc.getLicenses();
 
         // Verify the license's funding goal
         assertEq(fundingGoals[0], licenseGoal);
@@ -42,7 +42,7 @@ contract RVTCTest is Test {
         rvtc.contributeToLicense(0, contributionAmount);
 
         // Get updated license data
-        (, , uint256[] memory updatedFundsRaised, ) = rvtc.getLicenses();
+        (,, uint256[] memory updatedFundsRaised,) = rvtc.getLicenses();
 
         // Verify the funds raised
         assertEq(updatedFundsRaised[0], contributionAmount);
