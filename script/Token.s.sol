@@ -7,7 +7,7 @@ contract TokenScript is Script {
     function setUp() public {}
 
     function run() public {
-        uint privateKey = vm.envUint("DEV_PRIVATE_KEY");
+        uint256 privateKey = vm.envUint("DEV_PRIVATE_KEY");
         // address account = vm.addr(privateKey);
 
         // Convert the strings to address type
