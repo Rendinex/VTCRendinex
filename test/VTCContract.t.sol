@@ -20,7 +20,7 @@ contract RVTCTest is Test {
         usdt.mint(user, 10_000 * 10 ** 18);
 
         // Approve the RVTC contract to spend the tokens on behalf of the user
-        vm.prank(user); // "vm.prank" simulates transactions from another address
+        vm.prank(user);
         usdt.approve(address(rvtc), type(uint256).max);
     }
 
