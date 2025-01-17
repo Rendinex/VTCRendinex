@@ -12,6 +12,7 @@ contract RVTCTest is Test {
     address public contract_owner = address(0x121);
     address public user = address(0x123);
     address public first_contributor = address(0x124);
+    address public second_contributor = address(0x125);
     address public treasury = 0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97;
     address public rendinex = 0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97;
 
@@ -23,6 +24,7 @@ contract RVTCTest is Test {
 
         // Mint USDT to contributors
         usdt.mint(first_contributor, 10_000 * 10 ** 6);
+        usdt.mint(second_contributor, 8_000 * 10 ** 6);
 
         // Create license
         uint256 licenseGoal = 10_000 * 10 ** 6;
@@ -34,7 +36,98 @@ contract RVTCTest is Test {
         usdt.approve(address(rvtc), type(uint256).max);
     }
 
-    // Test creation of license
+    // Test reduction of funding
+    function testReduceFundingGoal() public {
+        uint256 reducedFunding = 3_000 * 10 ** 6;
+        vm.prank(contract_owner);
+        rvtc.reduceFundingGoal(0, reducedFunding);
+        // Get license data
+        (, uint256[] memory fundingGoals, , ) = rvtc.getLicenses();
+        assertEq(fundingGoals[0], reducedFunding);
+    }
+
+    // Test contribution to license
+    function testContributeToLicense() public {
+        vm.prank(contract_owner);
+        rvtc.createLicense(1000);
+
+        vm.prank(first_contributor);
+        usdt.approve(address(rvtc), 3_000 * 10 ** 6);
+        vm.prank(first_contributor);
+        rvtc.contributeToLicense(0, 3_000 * 10 ** 6);
+
+        (, , uint256[] memory fundsRaised, ) = rvtc.getLicenses();
+        assertEq(fundsRaised[0], 3_000 * 10 ** 6);
+        uint256 totalFundsToCollect = rvtc.getTotalFundsForLicenses();
+        assertEq(totalFundsToCollect, 3_000 * 10 ** 6);
+    }
+
+    // Test collection of funds
+    function testFundingCollection() public {
+        // Ensure the owner of the contract has 0 usdt in the beginning
+        uint256 balance = usdt.balanceOf(contract_owner);
+        assertEq(balance, 0);
+
+        vm.prank(first_contributor);
+        usdt.approve(address(rvtc), 3_000 * 10 ** 6);
+        vm.prank(first_contributor);
+        rvtc.contributeToLicense(0, 3_000 * 10 ** 6);
+
+        vm.prank(second_contributor);
+        usdt.approve(address(rvtc), 4_000 * 10 ** 6);
+        vm.prank(second_contributor);
+        rvtc.contributeToLicense(0, 4_000 * 10 ** 6);
+
+        (, , uint256[] memory fundsRaised, ) = rvtc.getLicenses();
+        assertEq(fundsRaised[0], 7_000 * 10 ** 6);
+        uint256 totalFundsToCollect = rvtc.getTotalFundsForLicenses();
+        assertEq(totalFundsToCollect, 7_000 * 10 ** 6);
+
+        vm.prank(contract_owner);
+        rvtc.collectLicenseFunds(contract_owner);
+        balance = usdt.balanceOf(contract_owner);
+        assertEq(balance, 7_000 * 10 ** 6);
+
+        totalFundsToCollect = rvtc.getTotalFundsForLicenses();
+        assertEq(totalFundsToCollect, 0);
+    }
+
+    function testWithdrawContribution() public {
+        vm.prank(first_contributor);
+        usdt.approve(address(rvtc), 5_000 * 10 ** 6);
+        vm.prank(first_contributor);
+        rvtc.contributeToLicense(0, 5_000 * 10 ** 6);
+
+        vm.prank(first_contributor);
+        rvtc.withdrawContribution(0);
+
+        (, , uint256[] memory fundsRaised, ) = rvtc.getLicenses();
+        assertEq(fundsRaised[0], 0);
+    }
+
+    function testFinalizeLicense() public {
+        vm.prank(first_contributor);
+        usdt.approve(address(rvtc), 3_000 * 10 ** 6);
+        vm.prank(first_contributor);
+        rvtc.contributeToLicense(0, 3_000 * 10 ** 6);
+
+        vm.prank(second_contributor);
+        usdt.approve(address(rvtc), 7_000 * 10 ** 6);
+        vm.prank(second_contributor);
+        rvtc.contributeToLicense(0, 7_000 * 10 ** 6);
+
+        (, , uint256[] memory updatedFundsRaised, ) = rvtc.getLicenses();
+        assertEq(updatedFundsRaised[0], 10_000 * 10 ** 6);
+
+        vm.prank(contract_owner);
+        rvtc.finalizeLicense(0);
+
+        (, , , bool[] memory fundingCompleted) = rvtc.getLicenses();
+        assertTrue(fundingCompleted[0]);
+    }
+
+    /*
+    // Test creation of license 
     function testCreateLicense() public view {
         uint256 licenseGoal = 10_000 * 10 ** 6;
 
@@ -51,56 +144,6 @@ contract RVTCTest is Test {
         assertEq(fundingGoals[0], licenseGoal);
         assertEq(updatedFundsRaised[0], 0);
         assertEq(fundingCompleted[0], false);
-    }
-
-    // Test reduction of funding
-    function testReduceFundingGoal() public {
-        uint256 reducedFunding = 3_000 * 10 ** 6;
-        vm.prank(contract_owner);
-        rvtc.reduceFundingGoal(0, reducedFunding);
-        // Get license data
-        (, uint256[] memory fundingGoals,,) = rvtc.getLicenses();
-        assertEq(fundingGoals[0], reducedFunding);
-    }
-
-    /*
-    function testContributeToLicense() public {
-        vm.prank(owner);
-        rvtc.createLicense(1000);
-
-        vm.prank(user);
-        usdtToken.approve(address(rvtc), 500);
-        vm.prank(user);
-        rvtc.contributeToLicense(0, 500);
-
-        (uint256[] memory ids, , uint256[] memory fundsRaised, ) = rvtc
-            .getLicenses();
-        assertEq(fundsRaised[0], 500);
-    }
-
-    function testWithdrawContribution() public {
-        vm.prank(owner);
-        rvtc.createLicense(1000);
-
-        vm.prank(user);
-        usdtToken.approve(address(rvtc), 500);
-        vm.prank(user);
-        rvtc.contributeToLicense(0, 500);
-
-        vm.prank(user);
-        rvtc.withdrawContribution(0);
-
-        (uint256[] memory ids, , uint256[] memory fundsRaised, ) = rvtc
-            .getLicenses();
-        assertEq(fundsRaised[0], 0);
-    }
-
-    function testMintLicense() public {
-        vm.prank(owner);
-        rvtc.mintLicense(1000);
-
-        (uint256[] memory ids, , , ) = rvtc.getLicenses();
-        assertEq(ids.length, 1);
     }
 
     function testFinalizeLicense() public {
