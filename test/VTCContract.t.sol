@@ -126,6 +126,58 @@ contract RVTCTest is Test {
         assertTrue(fundingCompleted[0]);
     }
 
+    function testDistributeProfits() public {
+        vm.prank(first_contributor);
+        usdt.approve(address(rvtc), 3_000 * 10 ** 6);
+        vm.prank(first_contributor);
+        rvtc.contributeToLicense(0, 3_000 * 10 ** 6);
+
+        vm.prank(second_contributor);
+        usdt.approve(address(rvtc), 7_000 * 10 ** 6);
+        vm.prank(second_contributor);
+        rvtc.contributeToLicense(0, 7_000 * 10 ** 6);
+
+        (, , uint256[] memory updatedFundsRaised, ) = rvtc.getLicenses();
+        assertEq(updatedFundsRaised[0], 10_000 * 10 ** 6);
+
+        vm.prank(contract_owner);
+        rvtc.finalizeLicense(0);
+
+        // Repartition of tokens
+        vm.prank(contract_owner);
+        rvtc.distributeTokensForLicense(0, first_contributor, 300 * 10 ** 18);
+        vm.prank(contract_owner);
+        rvtc.distributeTokensForLicense(0, second_contributor, 700 * 10 ** 18);
+
+        // Test balance of contributors
+        uint256 balanceAfterMintFirstContributor = rvtc.balanceOf(
+            first_contributor
+        );
+        assertEq(balanceAfterMintFirstContributor, 300 * 10 ** 18);
+        uint256 balanceAfterMintSecondContributor = rvtc.balanceOf(
+            second_contributor
+        );
+        assertEq(balanceAfterMintSecondContributor, 700 * 10 ** 18);
+
+        (, , , bool[] memory fundingCompleted) = rvtc.getLicenses();
+        assertTrue(fundingCompleted[0]);
+
+        usdt.mint(contract_owner, 1_000 * 10 ** 6);
+        vm.prank(contract_owner);
+        usdt.approve(address(rvtc), 1_000 * 10 ** 6);
+        vm.prank(contract_owner);
+        rvtc.distributeProfits(1_000 * 10 ** 6);
+
+        // There are 1000 tokens minted per license so the profit per token should be 1 usdt
+        assertEq(rvtc.cumulativeProfitPerToken(), 1 * 10 ** 6);
+
+        // The first contributor has 7000 usdt left so after withdrawing his 300 usdt he should have 7300 in total
+        vm.prank(first_contributor);
+        rvtc.withdrawProfits();
+        uint256 balance = usdt.balanceOf(first_contributor);
+        assertEq(balance, 7_300 * 10 ** 6);
+    }
+
     /*
     // Test creation of license 
     function testCreateLicense() public view {

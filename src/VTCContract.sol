@@ -186,11 +186,38 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         return totalFundsForLicenses;
     }
 
+    function getCumulativeProfitPerToken() external view returns (uint256) {
+        return cumulativeProfitPerToken;
+    }
+
     function getContribution(
         uint256 licenseId,
         address contributor
     ) external view returns (uint256) {
         return licenses[licenseId].contributions[contributor];
+    }
+
+    mapping(uint256 => uint256) public tokensDistributedPerLicense;
+
+    function distributeTokensForLicense(
+        uint256 licenseId,
+        address recipient,
+        uint256 amount
+    ) external onlyOwner {
+        License storage license = licenses[licenseId];
+        require(license.fundingCompleted, "Funding not finalized yet");
+        require(
+            tokensDistributedPerLicense[licenseId] + amount <=
+                TOKEN_PER_LICENSE,
+            "Exceeds token allocation for this license"
+        );
+        require(
+            balanceOf(address(this)) >= amount,
+            "Insufficient contract balance"
+        );
+
+        tokensDistributedPerLicense[licenseId] += amount;
+        _transfer(address(this), recipient, amount);
     }
 
     function distributeProfits(uint256 amount) external onlyOwner {
@@ -217,20 +244,20 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         address recipient,
         uint256 amount
     ) public override returns (bool) {
-        _updateWithdrawable(msg.sender); // Update the sender's claimable profits
-        _updateWithdrawable(recipient); // Update the recipient's claimable profits
+        _updateWithdrawable(msg.sender); // Update the sender's withdrawable profits
+        _updateWithdrawable(recipient); // Update the recipient's withdrawable profits
 
         return super.transfer(recipient, amount); // Call the original ERC20 transfer
     }
 
-    // Override transferFrom function to include custom logic (such as profit claim)
+    // Override transferFrom function to include custom logic (such as profit withdrawable)
     function transferFrom(
         address sender,
         address recipient,
         uint256 amount
     ) public override returns (bool) {
-        _updateWithdrawable(sender); // Update the sender's claimable profits
-        _updateWithdrawable(recipient); // Update the recipient's claimable profits
+        _updateWithdrawable(sender); // Update the sender's withdrawable profits
+        _updateWithdrawable(recipient); // Update the recipient's withdrawable profits
 
         return super.transferFrom(sender, recipient, amount); // Call the original ERC20 transferFrom
     }
