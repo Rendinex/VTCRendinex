@@ -140,7 +140,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Collect funds from all licenses and transfer to a specified address
-    function collectLicenseFunds(address to) external onlyOwner {
+    function collectLicenseFunds(address to) external onlyOwner nonReentrant {
         uint256 amountToCollect = totalFundsForLicenses;
         totalFundsForLicenses = 0; // Reset the funds counter
         require(
@@ -153,7 +153,9 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Finalize a license once its funding goal is met
-    function finalizeLicense(uint256 licenseId) external onlyOwner {
+    function finalizeLicense(
+        uint256 licenseId
+    ) external onlyOwner nonReentrant {
         License storage license = licenses[licenseId];
         require(!license.fundingCompleted, "License already finalized");
         require(
@@ -206,7 +208,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         uint256 licenseId,
         address recipient,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         License storage license = licenses[licenseId];
         require(license.fundingCompleted, "Funding not finalized yet");
         require(
@@ -224,7 +226,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Distribute profits among token holders
-    function distributeProfits(uint256 amount) external onlyOwner {
+    function distributeProfits(uint256 amount) external onlyOwner nonReentrant {
         require(totalSupply() > 0, "No tokens in circulation");
         require(
             usdtToken.transferFrom(msg.sender, address(this), amount),
@@ -272,7 +274,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Allow users to manually withdraw their profits
-    function withdrawProfits() public {
+    function withdrawProfits() public nonReentrant {
         _updateWithdrawable(msg.sender); // Update withdrawable profits for the caller
 
         uint256 amount = withdrawable[msg.sender]; // Fetch withdrawable amount
@@ -301,7 +303,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Deposit tokens into the contract for locking
-    function depositTokens(uint256 amount) external {
+    function depositTokens(uint256 amount) external nonReentrant {
         require(amount >= MIN_DEPOSIT, "Amount below minimum");
 
         // Calculate the remaining tokens available for deposit
@@ -369,7 +371,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Finalize the sale and burn locked tokens
-    function finalizeSale() external onlyOwner {
+    function finalizeSale() external onlyOwner nonReentrant {
         require(totalLockedTokens == TOKEN_PER_LICENSE, "Target not reached");
 
         uint256 length = usersWhoLockedTokens.length;
