@@ -32,7 +32,7 @@ contract RVTCTest is Test {
         // Create license
         uint256 licenseGoal = 10_000 * 10 ** 6;
         vm.prank(contract_owner);
-        rvtc.createLicense(licenseGoal);
+        rvtc.createLicense(licenseGoal, licenseGoal);
 
         // Approve the RVTC contract to spend the tokens on behalf of the user
         vm.prank(user);
@@ -59,7 +59,7 @@ contract RVTCTest is Test {
         // Create second license
         uint256 secondLicenseGoal = 12_000 * 10 ** 6;
         vm.prank(contract_owner);
-        rvtc.createLicense(secondLicenseGoal);
+        rvtc.createLicense(secondLicenseGoal, secondLicenseGoal);
 
         vm.prank(third_contributor);
         usdt.approve(address(rvtc), 20_000 * 10 ** 6);
@@ -76,7 +76,7 @@ contract RVTCTest is Test {
         vm.prank(contract_owner);
         rvtc.distributeTokensForLicense(1, first_contributor, 167 * 10 ** 2);
 
-        (, , uint256[] memory updatedFundsRaised, ) = rvtc.getLicenses();
+        (,,, uint256[] memory updatedFundsRaised,) = rvtc.getLicenses();
         assertEq(updatedFundsRaised[0], 10_000 * 10 ** 6);
         assertEq(updatedFundsRaised[1], 12_000 * 10 ** 6);
     }

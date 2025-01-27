@@ -30,7 +30,7 @@ contract RVTCTest is Test {
         // Create license
         uint256 licenseGoal = 10_000 * 10 ** 6;
         vm.prank(contract_owner);
-        rvtc.createLicense(licenseGoal);
+        rvtc.createLicense(licenseGoal, licenseGoal);
 
         // Approve the RVTC contract to spend the tokens on behalf of the user
         vm.prank(user);
@@ -43,21 +43,21 @@ contract RVTCTest is Test {
         vm.prank(contract_owner);
         rvtc.reduceFundingGoal(0, reducedFunding);
         // Get license data
-        (, uint256[] memory fundingGoals, , ) = rvtc.getLicenses();
+        (,, uint256[] memory fundingGoals,,) = rvtc.getLicenses();
         assertEq(fundingGoals[0], reducedFunding);
     }
 
     // Test contribution to license
     function testContributeToLicense() public {
         vm.prank(contract_owner);
-        rvtc.createLicense(1000);
+        rvtc.createLicense(10_000 * 10 ** 6, 10_000 * 10 ** 6);
 
         vm.prank(first_contributor);
         usdt.approve(address(rvtc), 3_000 * 10 ** 6);
         vm.prank(first_contributor);
         rvtc.contributeToLicense(0, 3_000 * 10 ** 6);
 
-        (, , uint256[] memory fundsRaised, ) = rvtc.getLicenses();
+        (,,, uint256[] memory fundsRaised,) = rvtc.getLicenses();
         assertEq(fundsRaised[0], 3_000 * 10 ** 6);
         uint256 totalFundsToCollect = rvtc.totalFundsForLicenses();
         assertEq(totalFundsToCollect, 3_000 * 10 ** 6);
@@ -79,7 +79,7 @@ contract RVTCTest is Test {
         vm.prank(second_contributor);
         rvtc.contributeToLicense(0, 4_000 * 10 ** 6);
 
-        (, , uint256[] memory fundsRaised, ) = rvtc.getLicenses();
+        (,,, uint256[] memory fundsRaised,) = rvtc.getLicenses();
         assertEq(fundsRaised[0], 7_000 * 10 ** 6);
         uint256 totalFundsToCollect = rvtc.totalFundsForLicenses();
         assertEq(totalFundsToCollect, 7_000 * 10 ** 6);
@@ -102,7 +102,7 @@ contract RVTCTest is Test {
         vm.prank(first_contributor);
         rvtc.withdrawContribution(0);
 
-        (, , uint256[] memory fundsRaised, ) = rvtc.getLicenses();
+        (,,, uint256[] memory fundsRaised,) = rvtc.getLicenses();
         assertEq(fundsRaised[0], 0);
     }
 
@@ -117,13 +117,13 @@ contract RVTCTest is Test {
         vm.prank(second_contributor);
         rvtc.contributeToLicense(0, 7_000 * 10 ** 6);
 
-        (, , uint256[] memory updatedFundsRaised, ) = rvtc.getLicenses();
+        (,,, uint256[] memory updatedFundsRaised,) = rvtc.getLicenses();
         assertEq(updatedFundsRaised[0], 10_000 * 10 ** 6);
 
         vm.prank(contract_owner);
         rvtc.finalizeLicense(0);
 
-        (, , , bool[] memory fundingCompleted) = rvtc.getLicenses();
+        (,,,, bool[] memory fundingCompleted) = rvtc.getLicenses();
         assertTrue(fundingCompleted[0]);
     }
 
@@ -138,7 +138,7 @@ contract RVTCTest is Test {
         vm.prank(second_contributor);
         rvtc.contributeToLicense(0, 7_000 * 10 ** 6);
 
-        (, , uint256[] memory updatedFundsRaised, ) = rvtc.getLicenses();
+        (,,, uint256[] memory updatedFundsRaised,) = rvtc.getLicenses();
         assertEq(updatedFundsRaised[0], 10_000 * 10 ** 6);
         vm.prank(contract_owner);
         rvtc.finalizeLicense(0);
@@ -150,16 +150,12 @@ contract RVTCTest is Test {
         rvtc.distributeTokensForLicense(0, second_contributor, 700 * 10 ** 2);
 
         // Test balance of contributors
-        uint256 balanceAfterMintFirstContributor = rvtc.balanceOf(
-            first_contributor
-        );
+        uint256 balanceAfterMintFirstContributor = rvtc.balanceOf(first_contributor);
         assertEq(balanceAfterMintFirstContributor, 300 * 10 ** 2);
-        uint256 balanceAfterMintSecondContributor = rvtc.balanceOf(
-            second_contributor
-        );
+        uint256 balanceAfterMintSecondContributor = rvtc.balanceOf(second_contributor);
         assertEq(balanceAfterMintSecondContributor, 700 * 10 ** 2);
 
-        (, , , bool[] memory fundingCompleted) = rvtc.getLicenses();
+        (,,,, bool[] memory fundingCompleted) = rvtc.getLicenses();
         assertTrue(fundingCompleted[0]);
 
         usdt.mint(contract_owner, 1_000 * 10 ** 6);

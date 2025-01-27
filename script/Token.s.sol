@@ -18,7 +18,7 @@ contract TokenScript is Script {
         vm.startBroadcast(privateKey);
         RVTC rvtc = new RVTC(usdtToken, treasury, rendinex);
         uint256 fundingGoal = 1000 * 1e6;
-        rvtc.createLicense(fundingGoal);
+        rvtc.createLicense(fundingGoal, fundingGoal);
         vm.stopBroadcast();
     }
 }

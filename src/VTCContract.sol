@@ -30,6 +30,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
 
     // License struct definition
     struct License {
+        uint256 fundingTotalTarget;
         uint256 fundingGoal; // Target funding for the license
         uint256 fundsRaised; // Total funds collected
         bool fundingCompleted; // Whether the funding goal is met
@@ -40,17 +41,9 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
 
     // Events
     event LicenseCreated(uint256 indexed licenseId, uint256 fundingGoal);
-    event LicenseFunded(
-        uint256 indexed licenseId,
-        address indexed contributor,
-        uint256 amount
-    );
+    event LicenseFunded(uint256 indexed licenseId, address indexed contributor, uint256 amount);
     event LicenseFinalized(uint256 indexed licenseId, uint256 totalFundsRaised);
-    event ContributionWithdrawn(
-        uint256 indexed licenseId,
-        address indexed contributor,
-        uint256 amount
-    );
+    event ContributionWithdrawn(uint256 indexed licenseId, address indexed contributor, uint256 amount);
     event FundingGoalReduced(uint256 indexed licenseId, uint256 newFundingGoal);
     event TokensDeposited(address indexed user, uint256 amount);
     event SaleFinalized();
@@ -59,39 +52,30 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     event TokensUndeposited(address indexed user, uint256 amount);
 
     // Constructor
-    constructor(
-        address _usdtToken,
-        address _treasury,
-        address _rendinex
-    ) Ownable(msg.sender) ERC20("RVTC", "RVTC") {
+    constructor(address _usdtToken, address _treasury, address _rendinex) Ownable(msg.sender) ERC20("RVTC", "RVTC") {
         usdtToken = IERC20(_usdtToken);
         treasury = _treasury;
         rendinex = _rendinex;
     }
 
     // Create a new license with a specified funding goal
-    function createLicense(uint256 fundingGoal) external onlyOwner {
+    function createLicense(uint256 fundingTotalTarget, uint256 fundingGoal) external onlyOwner {
         require(fundingGoal > 0, "Funding goal must be greater than zero");
 
         uint256 licenseId = nextLicenseId++;
         licenses[licenseId].fundingGoal = fundingGoal;
+        licenses[licenseId].fundingTotalTarget = fundingTotalTarget;
         licenses[licenseId].fundingCompleted = false;
 
         emit LicenseCreated(licenseId, fundingGoal);
     }
 
     // Contribute to a specific license
-    function contributeToLicense(
-        uint256 licenseId,
-        uint256 amount
-    ) external nonReentrant {
+    function contributeToLicense(uint256 licenseId, uint256 amount) external nonReentrant {
         License storage license = licenses[licenseId];
         require(!license.fundingCompleted, "Funding already completed");
         require(amount > 0, "Contribution must be greater than zero");
-        require(
-            usdtToken.transferFrom(msg.sender, address(this), amount),
-            "USDT transfer failed"
-        );
+        require(usdtToken.transferFrom(msg.sender, address(this), amount), "USDT transfer failed");
 
         license.fundsRaised += amount;
         totalFundsForLicenses += amount;
@@ -101,20 +85,11 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Reduce the funding goal for a specific license
-    function reduceFundingGoal(
-        uint256 licenseId,
-        uint256 newFundingGoal
-    ) external onlyOwner {
+    function reduceFundingGoal(uint256 licenseId, uint256 newFundingGoal) external onlyOwner {
         License storage license = licenses[licenseId];
         require(!license.fundingCompleted, "Funding already completed");
-        require(
-            newFundingGoal >= license.fundsRaised,
-            "New funding goal cannot be less than funds raised"
-        );
-        require(
-            newFundingGoal < license.fundingGoal,
-            "New funding goal must be less than current goal"
-        );
+        require(newFundingGoal >= license.fundsRaised, "New funding goal cannot be less than funds raised");
+        require(newFundingGoal < license.fundingGoal, "New funding goal must be less than current goal");
 
         license.fundingGoal = newFundingGoal;
 
@@ -131,10 +106,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         license.contributions[msg.sender] = 0;
         license.fundsRaised -= contribution;
 
-        require(
-            usdtToken.transfer(msg.sender, contribution),
-            "USDT transfer failed"
-        );
+        require(usdtToken.transfer(msg.sender, contribution), "USDT transfer failed");
 
         emit ContributionWithdrawn(licenseId, msg.sender, contribution);
     }
@@ -143,56 +115,39 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     function collectLicenseFunds(address to) external onlyOwner nonReentrant {
         uint256 amountToCollect = totalFundsForLicenses;
         totalFundsForLicenses = 0; // Reset the funds counter
-        require(
-            usdtToken.balanceOf(address(this)) >= amountToCollect,
-            "Insufficient balance"
-        );
-        usdtToken.transfer(to, amountToCollect);
+        require(usdtToken.balanceOf(address(this)) >= amountToCollect, "Insufficient balance");
+        require(usdtToken.transfer(to, amountToCollect), "USDT transfer failed");
 
         emit FundsCollected(amountToCollect, to);
     }
 
     // Finalize a license once its funding goal is met
-    function finalizeLicense(
-        uint256 licenseId
-    ) external onlyOwner nonReentrant {
+    function finalizeLicense(uint256 licenseId) external onlyOwner nonReentrant {
         License storage license = licenses[licenseId];
         require(!license.fundingCompleted, "License already finalized");
-        require(
-            license.fundsRaised >= license.fundingGoal,
-            "Funding goal not reached"
-        );
+        require(license.fundsRaised >= license.fundingGoal, "Funding goal not reached");
 
         license.fundingCompleted = true;
         totalLicensesMinted++;
         _mint(address(this), TOKEN_PER_LICENSE);
 
-        require(
-            usdtToken.transfer(owner(), license.fundsRaised),
-            "USDT transfer to owner failed"
-        );
+        require(usdtToken.transfer(owner(), license.fundsRaised), "USDT transfer to owner failed");
 
         emit LicenseFinalized(licenseId, license.fundsRaised);
     }
 
     // Get the last cumulative profit per token for a contributor
-    function getLastCumulativeProfitPerToken(
-        address contributor
-    ) external view returns (uint256) {
+    function getLastCumulativeProfitPerToken(address contributor) external view returns (uint256) {
         return lastCumulativeProfitPerToken[contributor];
     }
 
     // Get the withdrawable amount for a contributor
-    function getWithdrawableAmount(
-        address contributor
-    ) external view returns (uint256) {
+    function getWithdrawableAmount(address contributor) external view returns (uint256) {
         return withdrawable[contributor];
     }
 
     // Get the remaining funds required for a specific license
-    function getRemainingFundsForLicense(
-        uint256 licenseId
-    ) external view returns (uint256) {
+    function getRemainingFundsForLicense(uint256 licenseId) external view returns (uint256) {
         License storage license = licenses[licenseId];
         require(!license.fundingCompleted, "License funding already completed");
 
@@ -204,22 +159,18 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     }
 
     // Distribute tokens for a finalized license to a recipient
-    function distributeTokensForLicense(
-        uint256 licenseId,
-        address recipient,
-        uint256 amount
-    ) external onlyOwner nonReentrant {
+    function distributeTokensForLicense(uint256 licenseId, address recipient, uint256 amount)
+        external
+        onlyOwner
+        nonReentrant
+    {
         License storage license = licenses[licenseId];
         require(license.fundingCompleted, "Funding not finalized yet");
         require(
-            tokensDistributedPerLicense[licenseId] + amount <=
-                TOKEN_PER_LICENSE,
+            tokensDistributedPerLicense[licenseId] + amount <= TOKEN_PER_LICENSE,
             "Exceeds token allocation for this license"
         );
-        require(
-            balanceOf(address(this)) >= amount,
-            "Insufficient contract balance"
-        );
+        require(balanceOf(address(this)) >= amount, "Insufficient contract balance");
 
         tokensDistributedPerLicense[licenseId] += amount;
         _transfer(address(this), recipient, amount);
@@ -228,31 +179,21 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     // Distribute profits among token holders
     function distributeProfits(uint256 amount) external onlyOwner nonReentrant {
         require(totalSupply() > 0, "No tokens in circulation");
-        require(
-            usdtToken.transferFrom(msg.sender, address(this), amount),
-            "USDT transfer failed"
-        );
+        require(usdtToken.transferFrom(msg.sender, address(this), amount), "USDT transfer failed");
 
         uint256 profitPerToken = (amount * 1e18) / totalSupply(); // Scale by 1e18 to manage precision
         cumulativeProfitPerToken += profitPerToken;
     }
 
     // Override `transfer` to include profit withdrawal mechanism
-    function transfer(
-        address recipient,
-        uint256 amount
-    ) public override returns (bool) {
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
         _withdrawProfitsIfThresholdMet(msg.sender); // Withdraw profits for sender
         _withdrawProfitsIfThresholdMet(recipient); // Withdraw profits for recipient
         return super.transfer(recipient, amount);
     }
 
     // Override `transferFrom` to include profit withdrawal mechanism
-    function transferFrom(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) public override returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
         _withdrawProfitsIfThresholdMet(sender); // Withdraw profits for sender
         _withdrawProfitsIfThresholdMet(recipient); // Withdraw profits for recipient
         return super.transferFrom(sender, recipient, amount);
@@ -266,10 +207,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         if (amount >= 5 * 10 ** 6) {
             // At least $5 (USDT uses 6 decimals)
             withdrawable[account] = 0; // Reset withdrawable profits
-            require(
-                usdtToken.transfer(account, amount),
-                "USDT transfer failed"
-            );
+            require(usdtToken.transfer(account, amount), "USDT transfer failed");
         }
     }
 
@@ -280,10 +218,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         uint256 amount = withdrawable[msg.sender]; // Fetch withdrawable amount
 
         require(amount > 0, "No withdrawable profits");
-        require(
-            amount >= 5 * 10 ** 6,
-            "Withdrawable amount must be at least $5"
-        );
+        require(amount >= 5 * 10 ** 6, "Withdrawable amount must be at least $5");
 
         withdrawable[msg.sender] = 0; // Reset withdrawable profits
         require(usdtToken.transfer(msg.sender, amount), "USDT transfer failed");
@@ -293,11 +228,8 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     function _updateWithdrawable(address account) internal {
         uint256 currentBalance = balanceOf(account);
         if (currentBalance > 0) {
-            uint256 profitSinceLastUpdate = cumulativeProfitPerToken -
-                lastCumulativeProfitPerToken[account];
-            withdrawable[account] +=
-                (currentBalance * profitSinceLastUpdate) /
-                1e18;
+            uint256 profitSinceLastUpdate = cumulativeProfitPerToken - lastCumulativeProfitPerToken[account];
+            withdrawable[account] += (currentBalance * profitSinceLastUpdate) / 1e18;
         }
         lastCumulativeProfitPerToken[account] = cumulativeProfitPerToken;
     }
@@ -310,9 +242,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         uint256 remainingTokens = TOKEN_PER_LICENSE - totalLockedTokens;
 
         // Ensure the amount doesn't exceed the remaining space
-        uint256 depositAmount = amount > remainingTokens
-            ? remainingTokens
-            : amount;
+        uint256 depositAmount = amount > remainingTokens ? remainingTokens : amount;
         uint256 currentBalance = balanceOf(msg.sender);
 
         require(currentBalance >= depositAmount, "Insufficient balance");
@@ -331,17 +261,11 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
 
     // Undeposit all tokens locked by the user, provided the total locked tokens don't exceed the target
     function undepositAllTokens() external {
-        require(
-            totalLockedTokens < TOKEN_PER_LICENSE,
-            "Cannot undeposit, total locked tokens reached target"
-        );
+        require(totalLockedTokens < TOKEN_PER_LICENSE, "Cannot undeposit, total locked tokens reached target");
 
         uint256 amount = lockedTokens[msg.sender];
         require(amount > 0, "No locked tokens to undeposit");
-        require(
-            totalLockedTokens - amount >= 0,
-            "Total locked tokens would exceed limit"
-        );
+        require(totalLockedTokens - amount >= 0, "Total locked tokens would exceed limit");
 
         // Reset the user's locked tokens and total locked tokens
         lockedTokens[msg.sender] = 0;
@@ -359,9 +283,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
             }
 
             // Swap the last user with the current one and pop the last user
-            usersWhoLockedTokens[index] = usersWhoLockedTokens[
-                usersWhoLockedTokens.length - 1
-            ];
+            usersWhoLockedTokens[index] = usersWhoLockedTokens[usersWhoLockedTokens.length - 1];
             usersWhoLockedTokens.pop();
             hasLockedTokens[msg.sender] = false;
         }
@@ -405,26 +327,23 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     function getLicenses()
         external
         view
-        returns (
-            uint256[] memory,
-            uint256[] memory,
-            uint256[] memory,
-            bool[] memory
-        )
+        returns (uint256[] memory, uint256[] memory, uint256[] memory, uint256[] memory, bool[] memory)
     {
         uint256 totalLicenses = nextLicenseId;
         uint256[] memory ids = new uint256[](totalLicenses);
+        uint256[] memory fundingTotalTarget = new uint256[](totalLicenses);
         uint256[] memory fundingGoals = new uint256[](totalLicenses);
         uint256[] memory fundsRaised = new uint256[](totalLicenses);
         bool[] memory fundingCompleted = new bool[](totalLicenses);
 
         for (uint256 i = 0; i < totalLicenses; i++) {
             ids[i] = i;
+            fundingTotalTarget[i] = licenses[i].fundingTotalTarget;
             fundingGoals[i] = licenses[i].fundingGoal;
             fundsRaised[i] = licenses[i].fundsRaised;
             fundingCompleted[i] = licenses[i].fundingCompleted;
         }
 
-        return (ids, fundingGoals, fundsRaised, fundingCompleted);
+        return (ids, fundingTotalTarget, fundingGoals, fundsRaised, fundingCompleted);
     }
 }
