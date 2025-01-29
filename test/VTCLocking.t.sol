@@ -97,7 +97,6 @@ contract RVTCTest is Test {
         uint256 expectedTotalLocked = 1000 * 10 ** 2;
         assertEq(totalLocked, expectedTotalLocked);
 
-        // Finalize the sale
         vm.prank(contract_owner);
         rvtc.finalizeSale();
 
@@ -131,5 +130,31 @@ contract RVTCTest is Test {
 
         uint256 finalTotalSupply = rvtc.totalSupply();
         assertEq(finalTotalSupply, 1000 * 10 ** 2);
+
+        // Second sale
+        vm.prank(first_contributor);
+        rvtc.depositTokens(167 * 10 ** 2);
+        vm.prank(second_contributor);
+        rvtc.depositTokens(400 * 10 ** 2);
+        vm.prank(third_contributor);
+        rvtc.depositTokens(433 * 10 ** 2);
+
+        // Assert the total locked tokens after deposits
+        totalLocked = rvtc.totalLockedTokens();
+        assertEq(totalLocked, expectedTotalLocked);
+
+        // Finalize the sale
+        vm.prank(contract_owner);
+        rvtc.finalizeSale();
+
+        // Ensure the balances of the contributors have been updated correctly
+        balanceFirst = rvtc.balanceOf(first_contributor);
+        balanceSecond = rvtc.balanceOf(second_contributor);
+        balanceThird = rvtc.balanceOf(third_contributor);
+
+        // Assuming the contract burns tokens upon finalizeSale
+        assertEq(balanceFirst, 0);
+        assertEq(balanceSecond, 0);
+        assertEq(balanceThird, 0);
     }
 }

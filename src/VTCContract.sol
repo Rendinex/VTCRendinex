@@ -136,6 +136,10 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
         emit LicenseFinalized(licenseId, license.fundsRaised);
     }
 
+    function getUsersWhoLockedTokens() external view returns (address[] memory) {
+        return usersWhoLockedTokens;
+    }
+
     // Get the last cumulative profit per token for a contributor
     function getLastCumulativeProfitPerToken(address contributor) external view returns (uint256) {
         return lastCumulativeProfitPerToken[contributor];
@@ -187,6 +191,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
 
     // Override `transfer` to include profit withdrawal mechanism
     function transfer(address recipient, uint256 amount) public override returns (bool) {
+        require(balanceOf(msg.sender) - lockedTokens[msg.sender] >= amount, "Insufficient unlocked tokens");
         _withdrawProfitsIfThresholdMet(msg.sender); // Withdraw profits for sender
         _withdrawProfitsIfThresholdMet(recipient); // Withdraw profits for recipient
         return super.transfer(recipient, amount);
@@ -194,6 +199,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
 
     // Override `transferFrom` to include profit withdrawal mechanism
     function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        require(balanceOf(sender) - lockedTokens[sender] >= amount, "Insufficient unlocked tokens");
         _withdrawProfitsIfThresholdMet(sender); // Withdraw profits for sender
         _withdrawProfitsIfThresholdMet(recipient); // Withdraw profits for recipient
         return super.transferFrom(sender, recipient, amount);
@@ -238,14 +244,19 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
     function depositTokens(uint256 amount) external nonReentrant {
         require(amount >= MIN_DEPOSIT, "Amount below minimum");
 
+        uint256 currentBalance = balanceOf(msg.sender);
+
+        // Calculate available (unlocked) tokens
+        uint256 availableTokens = currentBalance - lockedTokens[msg.sender];
+        require(availableTokens >= amount, "Insufficient unlocked tokens");
+
         // Calculate the remaining tokens available for deposit
         uint256 remainingTokens = TOKEN_PER_LICENSE - totalLockedTokens;
 
         // Ensure the amount doesn't exceed the remaining space
         uint256 depositAmount = amount > remainingTokens ? remainingTokens : amount;
-        uint256 currentBalance = balanceOf(msg.sender);
 
-        require(currentBalance >= depositAmount, "Insufficient balance");
+        require(totalLockedTokens + depositAmount <= TOKEN_PER_LICENSE, "Exceeds target lock amount");
 
         // If this is the first time the user deposits, add them to the list
         if (!hasLockedTokens[msg.sender]) {
@@ -311,6 +322,7 @@ contract RVTC is ERC20, Ownable, ReentrancyGuard {
                 // Remove the user by swapping with the last element
                 usersWhoLockedTokens[i] = usersWhoLockedTokens[length - 1];
                 usersWhoLockedTokens.pop(); // Remove the last element
+                hasLockedTokens[user] = false;
 
                 length--;
                 totalLockedTokens -= locked;
